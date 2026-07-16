@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Decay & Refresh Scoring — An Honest Baseline-to-Model Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12172B;
+    --ink-soft:#1C2340;
+    --paper:#F5F1E8;
+    --paper-dim:#EAE3D3;
+    --rust:#A8462F;
+    --rust-dim:#c97a63;
+    --moss:#4B6B4F;
+    --graphite:#33343A;
+    --sand:#D8CDB8;
+    --muted:#6b6a63;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--graphite);
+    font-family:'Source Serif 4', Georgia, serif;
+    line-height:1.65;
+  }
+  a{color:var(--rust);}
+  a:focus, button:focus, .tocLink:focus{outline:3px solid var(--rust-dim); outline-offset:2px;}
+
+  .hero{
+    background:linear-gradient(180deg, var(--ink) 0%, var(--ink-soft) 100%);
+    color:var(--paper);
+    padding:5rem 1.5rem 8rem;
+    text-align:center;
+    position:relative;
+  }
+  .hero .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.78rem;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--rust-dim);
+    margin-bottom:1.1rem;
+  }
+  .hero h1{
+    font-family:'Fraunces', serif;
+    font-weight:700;
+    font-size:clamp(2rem, 5vw, 3.4rem);
+    line-height:1.08;
+    margin:0 0 1.2rem;
+    max-width:900px;
+    margin-left:auto;
+    margin-right:auto;
+  }
+  .hero p.tagline{
+    max-width:640px;
+    margin:0 auto;
+    color:#cfd0dd;
+    font-size:1.05rem;
+  }
+
+  .wrap{
+    max-width:880px;
+    margin:-5rem auto 0;
+    padding:0 1.5rem 6rem;
+    position:relative;
+    z-index:2;
+  }
+  .card{
+    background:var(--paper);
+    border-radius:4px;
+    box-shadow:0 30px 60px -25px rgba(0,0,0,0.55);
+    padding:2.6rem clamp(1.4rem, 5vw, 3.2rem);
+  }
+
+  /* the signature "flagged" tag element, used for reason codes + key claims */
+  .tag{
+    display:inline-flex;
+    align-items:center;
+    gap:0.4em;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.74rem;
+    letter-spacing:0.03em;
+    background:var(--paper);
+    border:1px solid var(--sand);
+    border-left:4px solid var(--rust);
+    padding:0.28em 0.7em 0.28em 0.6em;
+    border-radius:0 3px 3px 0;
+    position:relative;
+    color:var(--graphite);
+  }
+  .tag.safe{border-left-color:var(--moss);}
+  .tag::before{content:"";}
+
+  section{margin-top:3.4rem; scroll-margin-top:1rem;}
+  section:first-of-type{margin-top:0;}
+
+  .sec-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.76rem;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--rust);
+    display:flex;
+    align-items:center;
+    gap:0.6rem;
+    margin-bottom:0.6rem;
+  }
+  .sec-label .num{
+    background:var(--ink);
+    color:var(--paper);
+    font-weight:600;
+    border-radius:3px;
+    padding:0.15rem 0.5rem;
+  }
+  h2{
+    font-family:'Fraunces', serif;
+    font-size:1.7rem;
+    margin:0 0 1rem;
+    color:var(--ink);
+  }
+  h3{
+    font-family:'Fraunces', serif;
+    font-size:1.15rem;
+    color:var(--ink);
+    margin:1.6rem 0 0.6rem;
+  }
+  p{margin:0 0 1rem;}
+  ul, ol{padding-left:1.3rem;}
+  li{margin-bottom:0.5rem;}
+
+  .abstract{
+    font-size:1.02rem;
+    border-top:1px solid var(--sand);
+    border-bottom:1px solid var(--sand);
+    padding:1.4rem 0;
+    margin:1.6rem 0 0;
+    color:#2c2d31;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.86rem;
+    margin:1.2rem 0 1.6rem;
+  }
+  th, td{
+    text-align:left;
+    padding:0.55rem 0.7rem;
+    border-bottom:1px solid var(--sand);
+  }
+  th{
+    font-size:0.72rem;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--muted);
+    font-weight:600;
+  }
+  tr.highlight td{background:rgba(168,70,47,0.07); font-weight:600;}
+
+  .callout{
+    background:var(--paper-dim);
+    border-left:3px solid var(--ink);
+    padding:1rem 1.2rem;
+    font-size:0.95rem;
+    border-radius:0 3px 3px 0;
+    margin:1.2rem 0;
+  }
+  .callout.warn{border-left-color:var(--rust);}
+
+  .chartbox{margin:1.6rem 0 2rem;}
+  .chartbox svg{width:100%; height:auto; display:block;}
+  .chart-caption{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.76rem;
+    color:var(--muted);
+    margin-top:0.5rem;
+  }
+
+  .playbook-grid{
+    display:grid;
+    gap:1rem;
+    grid-template-columns:1fr;
+    margin:1.4rem 0;
+  }
+  .playbook-item{
+    border:1px solid var(--sand);
+    border-radius:4px;
+    padding:1rem 1.2rem;
+    position:relative;
+  }
+  .playbook-item h4{
+    font-family:'Fraunces', serif;
+    margin:0.3rem 0 0.4rem;
+    font-size:1.05rem;
+    color:var(--ink);
+  }
+  .playbook-item p{margin:0; font-size:0.94rem;}
+
+  nav.toc{
+    position:sticky;
+    top:1rem;
+    display:none;
+  }
+  @media (min-width:1180px){
+    .layout{display:grid; grid-template-columns:200px 1fr; gap:2.5rem; max-width:1080px; margin:-5rem auto 0; padding:0 1.5rem 6rem;}
+    .layout .wrap{margin:0; padding:0; max-width:none;}
+    nav.toc{display:block; padding-top:2.2rem;}
+  }
+  nav.toc ul{list-style:none; padding:0; margin:0;}
+  nav.toc a{
+    display:block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.78rem;
+    color:#d8d5c8;
+    text-decoration:none;
+    padding:0.4rem 0;
+    border-left:2px solid rgba(255,255,255,0.15);
+    padding-left:0.8rem;
+  }
+  nav.toc a:hover{color:var(--rust-dim); border-left-color:var(--rust-dim);}
+
+  footer{
+    text-align:center;
+    color:#9a9890;
+    font-size:0.85rem;
+    padding:2.5rem 1.5rem 3.5rem;
+    background:var(--ink);
+  }
+  footer a{color:var(--rust-dim);}
+
+  code{
+    font-family:'IBM Plex Mono', monospace;
+    background:var(--paper-dim);
+    padding:0.1em 0.35em;
+    border-radius:3px;
+    font-size:0.88em;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">FlyRank ML Internship &middot; Capstone Research Note</div>
+  <h1>Content Decay &amp; Refresh Scoring:<br>An Honest Baseline-to-Model Audit</h1>
+  <p class="tagline">Does a learned model actually beat a simple, readable rule at flagging which pages deserve a human's attention? We built both, tested them the honest way, and report what actually happened.</p>
+</div>
+
+<div class="layout">
+  <nav class="toc" aria-label="Table of contents">
+    <ul>
+      <li><a href="#abstract">Abstract</a></li>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#data">Data</a></li>
+      <li><a href="#method">Methodology</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#limits">Limitations</a></li>
+      <li><a href="#playbook">Recommendations</a></li>
+      <li><a href="#repro">Reproducibility</a></li>
+      <li><a href="#thanks">Acknowledgments</a></li>
+    </ul>
+  </nav>
+
+  <div class="wrap">
+    <div class="card">
+
+      <section id="abstract">
+        <div class="sec-label"><span class="num">01</span> Title &amp; Abstract</div>
+        <h2>Does the model beat the rule?</h2>
+        <p class="abstract">
+          This project asks a simple operational question: out of a large content portfolio, which pages are worth a person's time to review for refresh, and can a learned model meaningfully improve on a transparent, hand-written rule? We built a baseline rule from two audited signals — content staleness and traffic volume — then trained Logistic Regression and Random Forest classifiers on the same task, evaluating everything with a client-grouped train/test split so the model could not simply memorize individual clients. Under that honest split, the rule outperformed both learned models at every threshold we tested, and a parallel leakage test showed that a naive random split had been inflating apparent model skill from a genuine 0.55 up to a hollow, memorized 1.00. We report these results directly rather than reframing them, translate the rule into a three-category action playbook covering roughly 15% of the portfolio, and treat every claim here as observational and decision-support only — not causal, and not a guarantee about any individual page.
+        </p>
+      </section>
+
+      <section id="intro">
+        <div class="sec-label"><span class="num">02</span> Introduction</div>
+        <h2>The decision this supports</h2>
+        <p>Content and SEO teams typically manage far more pages than they can manually review on any regular cadence. The practical question isn't "what will happen to this page" — it's narrower and more useful: <em>given limited review time, which pages should a person look at first?</em></p>
+        <p>This work treats that as a triage problem. Before reaching for a machine-learned model, we asked whether a simple, fully readable rule could already do the job — and then held any learned model to the standard of actually beating that rule, on the same data, under the same honest test.</p>
+      </section>
+
+      <section id="data">
+        <div class="sec-label"><span class="num">03</span> Data</div>
+        <h2>What this is built on</h2>
+        <p>The analysis uses the FlyRank ML Internship starter dataset: 30,000 anonymized content items across 32 pseudonymized clients, each row a trailing-90-day snapshot of search and engagement metrics (impressions, clicks, sessions, click-through rate, average search position, and related fields).</p>
+        <h3>What we excluded, and why</h3>
+        <ul>
+          <li><strong>Trend/decline fields</strong> (<code>trend_direction</code>, <code>trend_pct</code>) were excluded from every model and rule input. The label we predict is derived directly from these fields, so using them as inputs would mean the model was shown the answer — this is confirmed directly in the leakage audit below.</li>
+          <li><strong>Client and content identifiers</strong> are pseudonymous codes, used only to define a grouped train/test split — never fed to any model as a feature.</li>
+          <li>Rows with <code>avg_position = 0</code> are treated as "no ranking data available," not as an actual top rank of zero, per the dataset's documented convention.</li>
+        </ul>
+      </section>
+
+      <section id="method">
+        <div class="sec-label"><span class="num">04</span> Methodology</div>
+        <h2>Rule, model, and how we tested both honestly</h2>
+
+        <h3>The label</h3>
+        <p>A page is treated as "declining" if its documented trend direction is downward in this trailing-90-day snapshot. This is an observed pattern in this dataset and time window — not a forecast of future decline.</p>
+
+        <h3>The baseline rule</h3>
+        <p>A page is flagged for refresh review if, and only if, it meets both conditions: it has gone <strong>180+ days without an update</strong>, and it is <strong>still receiving meaningful traffic</strong> (500+ impressions in the trailing 90 days). Both signals were checked against the data before being used — staleness and traffic volume each showed a real but non-monotonic relationship with decline (bucketed comfortably above the base rate in the middle ranges, but not a clean, one-directional trend end to end), which is why the rule requires both together rather than relying on either alone.</p>
+
+        <h3>The learned models</h3>
+        <p>Logistic Regression and Random Forest classifiers were trained on the same feature set (traffic, engagement, position, and static content attributes — the same fields available to the rule, plus a few more), predicting the same declining/not-declining label.</p>
+
+        <h3>Validation design</h3>
+        <p>All model comparisons use a <strong>client-grouped split</strong>: every page belonging to one client is entirely in the training set or entirely in the test set, never both. A plain random row-level split would let a model partially learn a specific client's quirks and then appear to "recognize" that same client in testing — a form of memorization rather than genuine pattern-learning.</p>
+
+        <h3>Leakage audit</h3>
+        <p>Every feature was checked against two questions: is it knowable before the moment of prediction, and is it free of any mathematical link to the label? Trend-based fields failed this check and were excluded. As a direct test of the audit itself, we deliberately re-added the excluded field (<code>trend_pct</code>) and retrained — precision jumped from 0.55 to a perfect 1.00, confirming both that the field really would have been leakage, and that our leakage test is capable of catching it.</p>
+      </section>
+
+      <section id="results">
+        <div class="sec-label"><span class="num">05</span> Results</div>
+        <h2>The rule beat the model</h2>
+        <p>All numbers below come from the same client-grouped test split, on the same data, with a fixed random seed.</p>
+
+        <table>
+          <thead><tr><th>k</th><th>Base rate</th><th>Baseline rule</th><th>Logistic Regression</th><th>Random Forest</th></tr></thead>
+          <tbody>
+            <tr><td>10</td><td>0.559</td><td><strong>0.80</strong></td><td>0.40</td><td>0.50</td></tr>
+            <tr><td>20</td><td>0.559</td><td><strong>0.65</strong></td><td>0.40</td><td>0.55</td></tr>
+            <tr class="highlight"><td>50</td><td>0.559</td><td>0.64</td><td>0.46</td><td>0.64</td></tr>
+          </tbody>
+        </table>
+
+        <div class="chartbox">
+          <svg viewBox="0 0 600 220" role="img" aria-label="Bar chart comparing precision at k=20 across baseline, logistic regression, and random forest">
+            <!-- base rate line -->
+            <line x1="60" y1="176" x2="580" y2="176" stroke="#33343A" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="585" y="180" font-family="IBM Plex Mono" font-size="10" fill="#6b6a63">base rate 0.559</text>
+            <!-- bars: scale 0-1 across height 160 -->
+            <!-- baseline 0.65 -->
+            <rect x="90" y="55" width="90" height="121" fill="#A8462F"/>
+            <text x="135" y="45" text-anchor="middle" font-family="IBM Plex Mono" font-size="13" fill="#12172B" font-weight="600">0.65</text>
+            <text x="135" y="200" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#33343A">baseline</text>
+            <!-- logreg 0.40 -->
+            <rect x="255" y="102" width="90" height="74" fill="#4B6B4F" opacity="0.55"/>
+            <text x="300" y="92" text-anchor="middle" font-family="IBM Plex Mono" font-size="13" fill="#12172B" font-weight="600">0.40</text>
+            <text x="300" y="200" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#33343A">logistic reg.</text>
+            <!-- rf 0.55 -->
+            <rect x="420" y="72" width="90" height="104" fill="#4B6B4F"/>
+            <text x="465" y="62" text-anchor="middle" font-family="IBM Plex Mono" font-size="13" fill="#12172B" font-weight="600">0.55</text>
+            <text x="465" y="200" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#33343A">random forest</text>
+          </svg>
+          <div class="chart-caption">Precision@20, client-grouped split. Neither learned model reached the baseline rule's score at this threshold.</div>
+        </div>
+
+        <div class="callout warn">
+          <strong>The split gap, made visible.</strong> Retraining the same Random Forest under a plain random split (instead of grouped) produced precision@20 = <strong>1.00</strong> — a perfect score. Under the honest grouped split, the same model scored <strong>0.55</strong>, barely above the 0.559 base rate. The entire gap between 1.00 and 0.55 is memorization of individual clients, not real predictive skill.
+        </div>
+
+        <div class="chartbox">
+          <svg viewBox="0 0 600 200" role="img" aria-label="Bar chart showing the gap between a random split score of 1.00 and a grouped split score of 0.55">
+            <rect x="130" y="30" width="110" height="140" fill="#c97a63"/>
+            <text x="185" y="20" text-anchor="middle" font-family="IBM Plex Mono" font-size="13" fill="#12172B" font-weight="600">1.00</text>
+            <text x="185" y="188" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#33343A">random split</text>
+            <rect x="360" y="93" width="110" height="77" fill="#4B6B4F"/>
+            <text x="415" y="83" text-anchor="middle" font-family="IBM Plex Mono" font-size="13" fill="#12172B" font-weight="600">0.55</text>
+            <text x="415" y="188" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#33343A">grouped split</text>
+          </svg>
+          <div class="chart-caption">Same model, same data, same metric (precision@20) — only the split changed.</div>
+        </div>
+
+        <h3>What the model leaned on</h3>
+        <p>Permutation importance on the Random Forest surfaced <code>days_with_impressions</code> as the strongest single feature (shuffling it cost ~3.4 accuracy points), followed by <code>content_age_days</code> and <code>avg_position</code>, with a cluster of traffic/engagement features trailing behind. No single feature dominated overwhelmingly — a healthier sign than the near-total dominance that would suggest hidden leakage.</p>
+      </section>
+
+      <section id="limits">
+        <div class="sec-label"><span class="num">06</span> Limitations &amp; honest framing</div>
+        <h2>What this evidence does not support</h2>
+        <ul>
+          <li>This is cross-sectional data — one snapshot, no intervention was run. Nothing here supports "refreshing a page will increase its traffic." The honest framing is decision-support: <em>these pages look worth reviewing first, based on observed patterns.</em></li>
+          <li>No claim is made about Google's ranking algorithm. Nothing here was modeled against, or claims to explain, how any search engine ranks pages.</li>
+          <li>The 180-day / 500-impression thresholds in the rule are reasoned from the signal checks, not formally optimized — a different dataset or business context could reasonably use different cutoffs.</li>
+          <li>The staleness and volume signals were each found to be directionally associated with decline, but non-monotonic — neither is a clean, standalone predictor, which is exactly why the rule requires both together.</li>
+          <li>This is a snapshot analysis on 30,000 rows across 32 clients — it is not a continuously monitored system, and results should be re-run periodically rather than trusted indefinitely.</li>
+        </ul>
+      </section>
+
+      <section id="playbook">
+        <div class="sec-label"><span class="num">07</span> Ranked recommendations</div>
+        <h2>The action playbook</h2>
+        <p>Because the honest evaluation favored the simple rule, the playbook below is built on the <strong>rule</strong>, not the learned model. Applied to the full 30,000-row dataset, 4,436 pages (about 15% of the portfolio) received one of three action flags; the remainder received no action.</p>
+
+        <div class="playbook-grid">
+          <div class="playbook-item">
+            <span class="tag">stale_but_visible</span>
+            <h4>Refresh review</h4>
+            <p>180+ days since update, still receiving 500+ impressions in the last 90 days. Worth a human read to confirm the page still matches current offerings before a rewrite.</p>
+          </div>
+          <div class="playbook-item">
+            <span class="tag">ctr_underperforming_for_position</span>
+            <h4>CTR-fix review</h4>
+            <p>Ranks well, but click-through rate sits well below what similar pages at that position typically get. Worth a look at the title and search snippet.</p>
+          </div>
+          <div class="playbook-item">
+            <span class="tag safe">strong_performer</span>
+            <h4>Protect &amp; monitor</h4>
+            <p>Fresh, well-ranked, high-traffic. No action needed now — just periodic re-checking, since strong performance is not permanent.</p>
+          </div>
+        </div>
+
+        <h3>Human review is required — this is not an automation pipeline</h3>
+        <p>Every flag above is a starting point for a person, not an instruction to a system. Before acting: read the actual page, confirm the flag still makes sense in context, and check for an obvious external explanation (seasonality, a since-launched competitor, a business change) before spending review time.</p>
+
+        <div class="callout">
+          <strong>What should never be automated:</strong> publishing a rewritten page without human review; deleting a page because it's unflagged; treating any flag as a guarantee of a traffic outcome; acting on flags for legal, medical, financial, or safety-sensitive content without domain-expert review; trusting a CTR-fix flag on very low-traffic pages, where small sample counts can look extreme by chance alone.
+        </div>
+
+        <h3>Monitoring / retrain triggers</h3>
+        <p>Re-run this analysis on a regular cadence (monthly is a reasonable default) rather than treating any single run as permanent. Re-check sooner if: the overall base rate of decline shifts noticeably from ~0.56; a large batch of pages gets refreshed at once (which changes "days since update" broadly); or the count of flagged pages changes sharply without a clear cause — any of these suggest the underlying data has shifted enough that the current thresholds may no longer fit.</p>
+      </section>
+
+      <section id="repro">
+        <div class="sec-label"><span class="num">08</span> Reproducibility</div>
+        <h2>Rerun it yourself</h2>
+        <p>Every step above — the signal checks, the rule, both models, the grouped-split comparison, the leakage confession test, and the playbook export — lives in executed, committed notebooks in the project repository:</p>
+        <p><a href="https://github.com/Ebrahim827/flyrank-ml-internship-starter" target="_blank" rel="noopener">github.com/Ebrahim827/flyrank-ml-internship-starter</a></p>
+        <p>Relevant notebooks: <code>work/notebooks/w04_baseline_score.ipynb</code>, <code>w05_model.ipynb</code>, <code>w06_validation_audit.ipynb</code>, <code>w07_action_playbook.ipynb</code>. Metrics referenced in this paper are saved as committed JSON files under <code>work/outputs/</code>.</p>
+      </section>
+
+      <section id="thanks">
+        <div class="sec-label"><span class="num">09</span> Acknowledgments &amp; data credit</div>
+        <h2>Data source</h2>
+        <p>Built on the FlyRank ML Internship dataset — <a href="https://flyrank.ai" target="_blank" rel="noopener">flyrank.ai</a>.</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<footer>
+  Independent capstone analysis &middot; FlyRank ML Internship, Machine Learning Track
+</footer>
+
+</body>
+</html>
